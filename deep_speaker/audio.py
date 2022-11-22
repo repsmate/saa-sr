@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 def read_mfcc(input_filename, sample_rate):
     audio = Audio.read(input_filename, sample_rate)
+    if audio is None:
+        return None
     mfcc = mfcc_fbank(audio, sample_rate)
     return mfcc
 
@@ -52,26 +54,13 @@ class Audio:
         return sorted(self.speakers_to_utterances)
 
     @staticmethod
-    def trim_silence(audio, threshold):
-        """Removes silence at the beginning and end of a sample."""
-        # pylint: disable=E1121
-        energy = librosa.feature.rms(audio)
-        frames = np.nonzero(np.array(energy > threshold))
-        indices = librosa.core.frames_to_samples(frames)[1]
-
-        # Note: indices can be an empty array, if the whole audio was silence.
-        audio_trim = audio[0:0]
-        left_blank = audio[0:0]
-        right_blank = audio[0:0]
-        if indices.size:
-            audio_trim = audio[indices[0]:indices[-1]]
-            left_blank = audio[:indices[0]]  # slice before.
-            right_blank = audio[indices[-1]:]  # slice after.
-        return audio_trim, left_blank, right_blank
-
-    @staticmethod
     def read(filename, sample_rate=SAMPLE_RATE):
-        audio, sr = librosa.load(filename, sr=sample_rate, mono=True, dtype=np.float32)
+        try:
+            audio, sr = librosa.load(filename, sr=sample_rate, mono=True, dtype=np.float32)
+        except:
+            print(f"Could not open: {filename}")
+            audio = None
+            sr = sample_rate
         assert sr == sample_rate
         return audio
 
@@ -94,10 +83,10 @@ class Audio:
         if not os.path.isfile(cache_filename):
             try:
                 mfcc = read_mfcc(input_filepath, sample_rate)
-                np.save(cache_filename, mfcc)
+                if mfcc is not None:
+                    np.save(cache_filename, mfcc)
             except librosa.util.exceptions.ParameterError as e:
                 logger.error(e)
-
 
 def pad_mfcc(mfcc, max_length):  # num_frames, nfilt=64.
     if len(mfcc) < max_length:

@@ -10,9 +10,9 @@ CHECKPOINTS_SOFTMAX_DIR = 'checkpoints-softmax'
 
 CHECKPOINTS_TRIPLET_DIR = 'checkpoints-triplets'
 
-BATCH_SIZE = 32 * 3  # have to be a multiple of 3.
+BATCH_SIZE = 2*3 #32 * 3  # have to be a multiple of 3.
 
 # Input to the model will be a 4D image: (batch_size, num_frames, num_fbanks, 3)
 # Where the 3 channels are: FBANK, DIFF(FBANK), DIFF(DIFF(FBANK)).
-NUM_FRAMES = 160  # 1 second ~ 100 frames with default params winlen=0.025,winstep=0.01
+NUM_FRAMES = 99 #160  # 1 second ~ 100 frames with default params winlen=0.025,winstep=0.01
 NUM_FBANKS = 64

@@ -36,6 +36,7 @@ def version():
 @click.option('--audio_dir', default=None)
 @click.option('--sample_rate', default=SAMPLE_RATE, show_default=True, type=int)
 def build_audio_cache(working_dir, audio_dir, sample_rate):
+    print('ceva working dir', working_dir)
     ensures_dir(working_dir)
     if audio_dir is None:
         audio_dir = os.path.join(working_dir, 'LibriSpeech')

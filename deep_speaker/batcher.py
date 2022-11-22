@@ -22,6 +22,8 @@ def extract_speaker(utt_file):
 
 
 def sample_from_mfcc(mfcc, max_length):
+    if mfcc.shape[0] != max_length:
+        print(f"MFCC shape {mfcc.shape} different than NUM_FRAMES. {mfcc.shape[0]} != {NUM_FRAMES}")
     if mfcc.shape[0] >= max_length:
         r = choice(range(0, len(mfcc) - max_length + 1))
         s = mfcc[r:r + max_length]
@@ -50,6 +52,7 @@ class KerasFormatConverter:
         self.audio = Audio(cache_dir=self.working_dir, audio_dir=None)
         if self.categorical_speakers is None:
             self.categorical_speakers = SparseCategoricalSpeakers(self.audio.speaker_ids)
+        #print(f"categorical speakers: {self.categorical_speakers}")
 
     def persist_to_disk(self):
         with open(os.path.join(self.output_dir, 'categorical_speakers.pkl'), 'wb') as w:
@@ -63,6 +66,7 @@ class KerasFormatConverter:
         # train OR test.
         num_speakers = len(self.audio.speaker_ids)
         sp_to_utt = train_test_sp_to_utt(self.audio, is_test)
+        print(f"Found speaker ids: {self.audio.speaker_ids}")
 
         # 64 fbanks 1 channel(s).
         # float32
@@ -72,7 +76,8 @@ class KerasFormatConverter:
         desc = f'Converting to Keras format [{"test" if is_test else "train"}]'
         for i, speaker_id in enumerate(tqdm(self.audio.speaker_ids, desc=desc)):
             utterances_files = sp_to_utt[speaker_id]
-            for j, utterance_file in enumerate(np.random.choice(utterances_files, size=num_per_speaker, replace=True)):
+            print(f"Number of files for speaker id {speaker_id}: {len(utterances_files)}. Configured number of training samples per speaker: {num_per_speaker}")
+            for j, utterance_file in enumerate(np.random.choice(utterances_files, size=num_per_speaker, replace=False)):
                 self.load_into_mat(utterance_file, self.categorical_speakers, speaker_id, max_length, kx, ky,
                                    i * num_per_speaker + j)
         return kx, ky
@@ -80,10 +85,10 @@ class KerasFormatConverter:
     def generate(self, max_length=NUM_FRAMES, counts_per_speaker=(3000, 500)):
         kx_train, ky_train = self.generate_per_phase(max_length, counts_per_speaker[0], is_test=False)
         kx_test, ky_test = self.generate_per_phase(max_length, counts_per_speaker[1], is_test=True)
-        logger.info(f'kx_train.shape = {kx_train.shape}')
-        logger.info(f'ky_train.shape = {ky_train.shape}')
-        logger.info(f'kx_test.shape = {kx_test.shape}')
-        logger.info(f'ky_test.shape = {ky_test.shape}')
+        print(f'kx_train.shape = {kx_train.shape}')
+        print(f'ky_train.shape = {ky_train.shape}')
+        print(f'kx_test.shape = {kx_test.shape}')
+        print(f'ky_test.shape = {ky_test.shape}')
         self.kx_train, self.ky_train, self.kx_test, self.ky_test = kx_train, ky_train, kx_test, ky_test
 
     @staticmethod
@@ -126,16 +131,19 @@ class LazyTripletBatcher:
     def __init__(self, working_dir: str, max_length: int, model: DeepSpeakerModel):
         self.working_dir = working_dir
         self.audio = Audio(cache_dir=working_dir)
-        logger.info(f'Picking audio from {working_dir}.')
+        print(f'Picking audio from {working_dir}.')
         self.sp_to_utt_train = train_test_sp_to_utt(self.audio, is_test=False)
         self.sp_to_utt_test = train_test_sp_to_utt(self.audio, is_test=True)
+        print(f"Train speakers: {len(self.sp_to_utt_train.keys())}")
+        print(f"Test speakers: {len(self.sp_to_utt_test.keys())}")
+
         self.max_length = max_length
         self.model = model
         self.nb_per_speaker = 2
-        self.nb_speakers = 640
-        self.history_length = 4
+        self.nb_speakers = len(self.sp_to_utt_train.keys())
+        self.history_length = 4 #6400 #4
         self.history_every = 100  # batches.
-        self.total_history_length = self.nb_speakers * self.nb_per_speaker * self.history_length  # 25,600
+        self.total_history_length = self.nb_speakers * self.nb_per_speaker * self.history_length  # 2 * 6400 * 2 = 25600 # orig is 25,600
         self.metadata_train_speakers = Counter()
         self.metadata_output_file = os.path.join(self.working_dir, 'debug_batcher.json')
 
@@ -148,8 +156,10 @@ class LazyTripletBatcher:
         self.history_model_inputs = None
 
         self.batch_count = 0
-        for _ in tqdm(range(self.history_length), desc='Initializing the batcher'):  # init history.
+        print(f"Initializing history..")
+        for _ in range(self.history_length):  # init history.
             self.update_triplets_history()
+        print(f"Finished initializing history..")
 
     def update_triplets_history(self):
         model_inputs = []

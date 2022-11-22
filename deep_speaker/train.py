@@ -20,13 +20,15 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
 def fit_model(dsm: DeepSpeakerModel, working_dir: str, max_length: int = NUM_FRAMES, batch_size=BATCH_SIZE):
+    print(f"Building Lazy triplet batcher.")
     batcher = LazyTripletBatcher(working_dir, max_length, dsm)
 
     # build small test set.
     test_batches = []
-    for _ in tqdm(range(200), desc='Build test set'):
+    print(f"Building test set. bsz = {batch_size}")
+    for _ in tqdm(range(10000), desc='Build test set'):
         test_batches.append(batcher.get_batch_test(batch_size))
-
+    print(f"Finished building test set")
     def test_generator():
         while True:
             for bb in test_batches:
@@ -39,9 +41,9 @@ def fit_model(dsm: DeepSpeakerModel, working_dir: str, max_length: int = NUM_FRA
     checkpoint_name = dsm.m.name + '_checkpoint'
     checkpoint_filename = os.path.join(CHECKPOINTS_TRIPLET_DIR, checkpoint_name + '_{epoch}.h5')
     checkpoint = ModelCheckpoint(monitor='val_loss', filepath=checkpoint_filename, save_best_only=True)
-    dsm.m.fit(x=train_generator(), y=None, steps_per_epoch=2000, shuffle=False,
+    dsm.m.fit(x=train_generator(), y=None, shuffle=False, steps_per_epoch=2000,
               epochs=1000, validation_data=test_generator(), validation_steps=len(test_batches),
-              callbacks=[checkpoint])
+              callbacks=[checkpoint], verbose=1)
 
 
 def fit_model_softmax(dsm: DeepSpeakerModel, kx_train, ky_train, kx_test, ky_test,
@@ -79,7 +81,7 @@ def start_training(working_dir, pre_training_phase=True):
     ensures_dir(CHECKPOINTS_TRIPLET_DIR)
     batch_input_shape = [None, NUM_FRAMES, NUM_FBANKS, 1]
     if pre_training_phase:
-        logger.info('Softmax pre-training.')
+        print('Softmax pre-training.')
         kc = KerasFormatConverter(working_dir)
         num_speakers_softmax = len(kc.categorical_speakers.speaker_ids)
         dsm = DeepSpeakerModel(batch_input_shape, include_softmax=True, num_speakers_softmax=num_speakers_softmax)
@@ -87,25 +89,26 @@ def start_training(working_dir, pre_training_phase=True):
         pre_training_checkpoint = load_best_checkpoint(CHECKPOINTS_SOFTMAX_DIR)
         if pre_training_checkpoint is not None:
             initial_epoch = int(pre_training_checkpoint.split('/')[-1].split('.')[0].split('_')[-1])
-            logger.info(f'Initial epoch is {initial_epoch}.')
-            logger.info(f'Loading softmax checkpoint: {pre_training_checkpoint}.')
+            print(f'Initial epoch is {initial_epoch}.')
+            print(f'Loading softmax checkpoint: {pre_training_checkpoint}.')
             dsm.m.load_weights(pre_training_checkpoint)  # latest one.
         else:
             initial_epoch = 0
         fit_model_softmax(dsm, kc.kx_train, kc.ky_train, kc.kx_test, kc.ky_test, initial_epoch=initial_epoch)
     else:
-        logger.info('Training with the triplet loss.')
+        print('Training with the triplet loss.')
         dsm = DeepSpeakerModel(batch_input_shape, include_softmax=False)
         triplet_checkpoint = load_best_checkpoint(CHECKPOINTS_TRIPLET_DIR)
         pre_training_checkpoint = load_best_checkpoint(CHECKPOINTS_SOFTMAX_DIR)
         if triplet_checkpoint is not None:
-            logger.info(f'Loading triplet checkpoint: {triplet_checkpoint}.')
+            print(f'Loading triplet checkpoint: {triplet_checkpoint}.')
             dsm.m.load_weights(triplet_checkpoint)
         elif pre_training_checkpoint is not None:
-            logger.info(f'Loading pre-training checkpoint: {pre_training_checkpoint}.')
+            print(f'Loading pre-training checkpoint: {pre_training_checkpoint}.')
             # If `by_name` is True, weights are loaded into layers only if they share the
             # same name. This is useful for fine-tuning or transfer-learning models where
             # some of the layers have changed.
             dsm.m.load_weights(pre_training_checkpoint, by_name=True)
         dsm.m.compile(optimizer=SGD(), loss=deep_speaker_loss)
+        print(f"Fitting model. {working_dir}, {NUM_FRAMES}")
         fit_model(dsm, working_dir, NUM_FRAMES)
